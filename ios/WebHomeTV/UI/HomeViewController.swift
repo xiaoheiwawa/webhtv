@@ -165,7 +165,7 @@ extension HomeViewController: UITableViewDataSource, UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
         if indexPath.section == 0 {
             urlField.text = savedConfigs[indexPath.row].url
-            loadConfig()
+            loadConfigTapped()
             return
         }
         let site = sites[indexPath.row]
