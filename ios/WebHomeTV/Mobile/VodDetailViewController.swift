@@ -1,5 +1,4 @@
 ﻿import UIKit
-import AVKit
 
 /// Native detail + playback screen, mirroring Android `VideoActivity`:
 /// poster + meta + description + a flag/episode picker, then AVPlayer playback.
@@ -261,6 +260,7 @@ final class VodDetailViewController: UIViewController {
             }
         }
     }
+}
 
 /// Entry point to open a vod into the detail screen, used by browser & search.
 enum AppScreens {

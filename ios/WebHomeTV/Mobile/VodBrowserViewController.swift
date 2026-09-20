@@ -102,7 +102,7 @@ final class VodBrowserViewController: UIViewController {
 
     // MARK: - Data
 
-    private func reloadFromConfig() {
+    func reloadFromConfig() {
         sites = ConfigManager.shared.sites
         guard !sites.isEmpty else { return }
         // Prefer a spider site; fall back to any site.
