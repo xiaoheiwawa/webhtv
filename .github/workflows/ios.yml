@@ -44,15 +44,43 @@ jobs:
           xcodegen generate --spec project.yml
           test -f WebHomeTV.xcodeproj/project.pbxproj
 
+      - name: 选择可用模拟器
+        id: sim
+        shell: bash
+        run: |
+          set -uo pipefail
+          # macos-latest 镜像会随 Xcode 升级而更新（例如 Xcode 26 已无 iPhone 15），
+          # 因此用 simctl 动态挑选一个可用设备，避免硬编码设备名。
+          pick() {
+            xcrun simctl list devices available \
+              | grep -E "^[[:space:]]+$1" \
+              | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/' \
+              | head -n 1
+          }
+          UDID="$(pick iPhone || true)"
+          if [ -z "$UDID" ]; then UDID="$(pick iPad || true)"; fi
+          if [ -z "$UDID" ]; then
+            echo "未找到可用的 iOS 模拟器，单元测试将被跳过"
+          else
+            echo "选中模拟器: $(xcrun simctl list devices available | grep "$UDID")"
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
       - name: 运行单元测试
         working-directory: ios
         shell: bash
         continue-on-error: true
         run: |
+          set -uo pipefail
+          UDID="${{ steps.sim.outputs.udid }}"
+          if [ -z "$UDID" ]; then
+            echo "没有可用模拟器，跳过单元测试"
+            exit 0
+          fi
           xcodebuild test \
             -project WebHomeTV.xcodeproj \
             -scheme WebHomeTV \
-            -destination "platform=iOS Simulator,name=iPhone 15,OS=latest" \
+            -destination "platform=iOS Simulator,id=$UDID" \
             CODE_SIGNING_ALLOWED=NO
         env:
           SKIP_TEST_BUILD: ""

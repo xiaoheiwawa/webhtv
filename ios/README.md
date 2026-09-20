@@ -8,6 +8,7 @@
 - 原生 Swift (UIKit) 应用，不含 Flutter。
 - 用苹果 `JavaScriptCore` 运行现有的 `quickjs/src/main/assets/js/lib` 资产（已复制到 `Resources/JS/lib`）。
 - CI：push / 手动触发 → `macos-latest` → `xcodegen generate` → `xcodebuild ... CODE_SIGNING_ALLOWED=NO` → 打包 `Payload/WebHomeTV-...-unsigned.ipa` 上传。
+- 单元测试不绑定具体机型：CI 用 `xcrun simctl list devices available` 动态选一个可用模拟器（优先 iPhone），镜像换 Xcode 也不会因 `iPhone 15` 之类被移除而报错。
 
 ## 当前状态
 
