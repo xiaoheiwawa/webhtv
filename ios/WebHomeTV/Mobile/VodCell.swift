@@ -57,7 +57,7 @@ final class VodCell: UICollectionViewCell {
             imageView.image = nil
             return
         }
-        ImageLoader.shared.load(url: url) { [weak self] image in
+        ImageLoader.load(url: url) { [weak self] image in
             self?.imageView.image = image
         }
     }

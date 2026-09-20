@@ -136,7 +136,7 @@ final class VodDetailViewController: UIViewController {
         metaLabel.text = meta
         descLabel.text = vod.vodContent.isEmpty ? "暂无简介" : vod.vodContent
         if let url = URL(string: vod.vodPic), !vod.vodPic.isEmpty {
-            ImageLoader.shared.load(url: url) { [weak self] img in self?.posterView.image = img }
+            ImageLoader.load(url: url) { [weak self] img in self?.posterView.image = img }
         }
         buildFlagsAndEpisodes()
     }

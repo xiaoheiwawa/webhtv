@@ -25,6 +25,13 @@
 - [x] 播放细节：倍速循环(Rate)、音轨/字幕切换、画中画(PiP)、截图、AirPlay、屏幕遥控面板
 - [x] 单元测试（transformer/loader/site/playback/config/proxy 地址）
 - [x] `.github/workflows/ios.yml` 产出未签名 IPA（含模拟器测试）
+- [x] **安卓手机端同构原生界面**：底部三页签（点播 / 直播 / 设置）
+- [x] 原生点播浏览（`VodBrowserViewController`）：分类横排 + 视频宫格 + 站点切换 + 搜索 + 配置入口
+- [x] 原生详情/选集（`VodDetailViewController`）：海报/简介/片源/选集，AVPlayer 全屏播放
+- [x] 原生搜索（`SearchViewController`）与设置页（`SettingsViewController`）
+- [x] 原生直播列表（`LiveViewController`）：TVBox live JSON / m3u `#genre#` 解析，点击播放
+- [x] 复用 `SpiderEngine`/`PlayerManager`/`Network`/`LocalHTTPProxy`，不经过 WebHome
+
 - [ ] 本地 proxy `/proxy` 接入 Spider 流（阶段二引擎，尚未接到代理路由）
 - [ ] 遥控器实体键映射（iOS 无 D-pad，用屏幕面板替代，已做）
 - [ ] 网盘驱动检测（`pan.check` 目前为骨架，未接真实检测服务）

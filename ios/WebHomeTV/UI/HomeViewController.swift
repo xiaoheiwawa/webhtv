@@ -15,7 +15,7 @@ final class HomeViewController: UIViewController {
         title = "WebHomeTV"
         view.backgroundColor = .black
         configureLayout()
-        loadButton.addTarget(self, action: #selector(loadConfig), for: .touchUpInside)
+        loadButton.addTarget(self, action: #selector(loadConfigTapped), for: .touchUpInside)
         savedConfigs = ConfigStore.load()
         restoreLastConfig()
     }
@@ -58,7 +58,7 @@ final class HomeViewController: UIViewController {
         ])
     }
 
-    @objc private func loadConfig() {
+    @objc private func loadConfigTapped() {
         let url = urlField.text ?? ""
         guard !url.isEmpty else { return }
         urlField.resignFirstResponder()
