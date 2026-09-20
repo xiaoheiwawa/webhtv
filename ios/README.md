@@ -12,16 +12,19 @@
 ## 当前状态
 
 - [x] iOS 工程骨架（`project.yml` + XcodeGen 生成）
-- [x] 入口 `AppDelegate.swift` + 首页占位 `HomeViewController.swift`
+- [x] 入口 `AppDelegate.swift` + `UINavigationController` 根导航
 - [x] JS Spider 引擎（`SpiderEngine.swift` + `ScriptLoader.swift` + `ESModuleTransformer.swift`）
 - [x] ESM→CommonJS 转换（`cat.js`/`gbk.js`/csp 的 `export default`/`export {}` 均可跑）
 - [x] 原生桥 `GlobalBridge.swift`（`native.s2t/getPort/req/joinUrl/md5/aes/rsa/localGet` 等）
-- [x] 单元测试（`WebHomeTVTests`，对 transformer/loader 做验证）
-- [x] 原生工具：`Network`、`CryptoUtil`、`SimplifiedConverter`
+- [x] 单元测试（`WebHomeTVTests`，transformer/loader/site 解析）
+- [x] 配置模型 `SiteConfig.swift`（解析 TVBox `sites`、`homePage` 备用键、header、站点分类）
+- [x] WebHome 桥 `FongmiBridge.swift`（`WKScriptMessageHandler`，`window.fongmi.invoke/resourceUrl` + `net/site/config/cache` 方法）
+- [x] 首页 `HomeViewController.swift`（输入配置 URL → 加载站点列表 → 打开有 `homePage` 的 WebHome）
+- [x] `WebHomeViewController.swift`（`WKWebView` 渲染 WebHome 页）
 - [x] `.github/workflows/ios.yml` 产出未签名 IPA（含模拟器测试步骤）
 - [ ] 本地 HTTP 代理 / Proxy server
-- [ ] Csp 索引与站点配置导入（sites/`csp_X` 地址）
-- [ ] WebHome `WKWebView` + `window.fongmi` 桥
+- [ ] 站点配置持久化（多配置管理、depot `urls` 递归）
+- [ ] Spider 站点真正跑通 homepage/search/detail/play 并接 UI
 - [ ] 播放器（AVPlayer）、遥控器按键、投屏（AirPlay）
 - [ ] 网盘检测 / Nostr / TMDB 等增强能力
 
@@ -33,8 +36,10 @@
 | `quickjs/.../Global.java` / `Local.java` | `GlobalBridge.swift` |
 | `okhttp3` | `URLSession`（`Network.swift`） |
 | `SharedPreferences` (local 缓存) | `UserDefaults`/本地存储 |
+| `app/.../bean/Config + VodConfig` | `SiteConfig.swift` + `Site.Store` |
+| `HomeWebBridge` + `window.fongmi` | `FongmiBridge.swift` + `WKWebView` |
 | 本地 HTTP Server (Proxy/Server) | 待移植（嵌入 HTTP / TCPServer） |
-| WebView + `window.fongmi` | `WKWebView` + WKScriptMessageHandler |
+| WebView + `window.fongmi` | `WKWebView` + `WKScriptMessageHandler` |
 | ExoPlayer | `AVPlayer` / `AVPlayerViewController` |
 | DLNA | AirPlay（系统级） |
 
@@ -42,8 +47,8 @@
 
 1. **CI 出包闭环**（已完成工程 + 工作流；push 后即产 IPA）
 2. **JS Spider 引擎完整加载**（已完成基础；`csp_*` 源 homepage/search/detail/play 可跑）
-3. 配置导入与站点列表、WebHome 首页接管
-4. 点播/直播播放器 + 遥控器按键
+3. **配置导入 + 站点列表 + WebHome 首页接管**（本阶段已落地：SiteConfig 解析 + FongmiBridge + WKWebView 首页；代理/持久化待下阶段）
+4. 点播/直播播放器 + 遥控器按键 + 本地代理
 5. 网盘检测 / Nostr / TMDB / 投屏增强
 6. 真机/侧载安装验证（未签名需 AltStore 等）
 
