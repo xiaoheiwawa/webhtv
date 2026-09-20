@@ -16,8 +16,9 @@
 - [x] JS Spider 引擎（`SpiderEngine` + `ScriptLoader` + `ESModuleTransformer`）
 - [x] 原生桥 `GlobalBridge.swift`（`native.*` + `req/http/console/setTimeout`）
 - [x] 配置模型 `SiteConfig.swift` + 持久化 `ConfigStore.swift`（多配置、depot `urls` 递归、重启恢复）
-- [x] WebHome 桥 `FongmiBridge.swift`（`window.fongmi`：`net.*/site.*/config.*/cache.*/player.*/pan.check/navigation.*`）
+- [x] WebHome 桥 `FongmiBridge.swift` + `FongmiSDK.swift`：与安卓同一套 JS SDK（`window.fongmi.*`、`window.fm.*` 别名、`fongmiClient`、`html.fm-native`、`fmsdk` 事件，以及低层 `fongmiBridge`/`fongmiNative`，含 12 000 字符内联 / 60 000 分片结果协议）
 - [x] 首页/站点列表 + WKWebView WebHome 渲染
+- [x] 首页入口对齐 Android：读取配置 `home` 自动打开 WebHome、相对 `homePage` 按配置 URL 解析、空页/加载失败给可见提示
 - [x] 本地 HTTP 代理 `LocalHTTPProxy.swift`（`/webResource?url=` 转发 + CORS + Range）
 - [x] 播放器 `PlayerManager.swift` + `VideoViewController.swift`（AVPlayer）
 - [x] 播放控制：play/pause/seek/±15s/prev/next/replay/loop
@@ -43,6 +44,25 @@
 | `PlayerManager` + ExoPlayer | `PlayerManager.swift` + `AVPlayer`/`AVPlayerViewController` |
 | 倍速/音轨/字幕/投屏 | `Rate`/media selection/PiP/AirPlay `AVRoutePicker` |
 | DLNA | AirPlay（系统级） |
+
+## WebHome JS SDK 覆盖（iOS）
+
+`FongmiSDK.swift` 注入的 SDK 与安卓 `HomeWebController.getSdk()` 同构，页面无需为 iOS 改写：
+
+| 方法 | 状态 |
+| --- | --- |
+| `net.request` / `net.resourceUrl` | ✅（headers、timeout、responseType；`credentials:include` 的 cookie 转发未接） |
+| `cache.get` / `cache.set` / `cache.del` | ✅（UserDefaults） |
+| `player.playUrl` / `player.control` / `player.status` | ✅（AVPlayer） |
+| `pan.play` | ✅（等价 `player.playUrl`，`push://` 前缀已剥离） |
+| `device.info` / `site.info` / `config.info` | ✅（`device.info` 少了安卓的网卡字段） |
+| `ui.setToolbar` / `navigation.back` / `navigation.reload` | ✅（工具栏=导航栏显隐） |
+| `pan.check` | ⚠️ 骨架：统一返回未检出（未接网盘检测服务） |
+| `app.history` | ⚠️ 返回空列表（iOS 暂无观看记录存储） |
+| `app.search` / `app.openLive` / `app.openKeep` | ❌ iOS 无对应界面：返回 `{"unsupported":true}` 并弹一次提示 |
+| `player.playVod` | ❌ 站点详情/播放链路未接：直接 reject，页面可 `catch` |
+
+> `/webResource` 会转发页面传入的 `headers`；`credentials=include` 目前不生效。
 
 ## 里程碑
 

@@ -19,6 +19,12 @@ final class WebHomeViewController: UIViewController {
         configureWebView()
     }
 
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // A page may have hidden the bar via `ui.setToolbar(false)`.
+        navigationController?.setNavigationBarHidden(false, animated: animated)
+    }
+
     private func configureWebView() {
         title = site.name.isEmpty ? site.key : site.name
         view.backgroundColor = .black
@@ -43,6 +49,10 @@ final class WebHomeViewController: UIViewController {
         webView.isOpaque = false
 
         bridge = FongmiBridge(webView: webView)
+        // `ui.setToolbar(false)` hides the navigation bar for immersive pages.
+        bridge.onToolbarVisible = { [weak self] visible in
+            self?.navigationController?.setNavigationBarHidden(!visible, animated: true)
+        }
         userContent.add(bridge, name: "fongmi")
 
         loadHome()
@@ -50,32 +60,51 @@ final class WebHomeViewController: UIViewController {
 
     private func loadHome() {
         let page = site.homePage
-        if page.hasPrefix("http://") || page.hasPrefix("https://") {
-            if let url = URL(string: page) {
-                webView.load(URLRequest(url: url))
-                return
-            }
-        }
-        // relative `./xxx.html`: resolve against config URL.
-        if let base = SiteStore.currentURL, !base.isEmpty,
-           let resolved = URL(string: page, relativeTo: URL(string: base)) {
-            webView.load(URLRequest(url: resolved))
+        guard !page.isEmpty else {
+            showMessage("该站点没有配置 WebHome 首页")
             return
         }
-        // local file or inline
+        // Bundled asset first (`assets://` / `file://`).
         if page.hasPrefix("file://") || page.hasPrefix("assets://") {
             let path = page.replacingOccurrences(of: "file://", with: "").replacingOccurrences(of: "assets://", with: "")
             if let url = Bundle.main.url(forResource: path, withExtension: nil) {
                 webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-                return
+            } else {
+                showMessage("找不到本地 WebHome 资源：\(path)")
             }
+            return
         }
+        // http(s) or a path relative to the config URL (as on Android).
+        if let url = HomePageResolver.url(for: page, configURL: SiteStore.currentURL) {
+            webView.load(URLRequest(url: url))
+            return
+        }
+        // Inline HTML stored in the config.
         webView.loadHTMLString(page, baseURL: nil)
+    }
+
+    /// Visible fallback: a failed load must never leave the user staring at a black screen.
+    private func showMessage(_ text: String) {
+        let html = """
+        <html><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1"></head>
+        <body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#e6e6e6;font:16px -apple-system,sans-serif;text-align:center;padding:24px">\(text)</body>
+        </html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
     }
 }
 
 extension WebHomeViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         // optional: log loaded title
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        showMessage("页面加载失败：\(error.localizedDescription)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        showMessage("页面加载失败：\(error.localizedDescription)")
     }
 }

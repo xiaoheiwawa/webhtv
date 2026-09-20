@@ -61,46 +61,70 @@ final class HomeViewController: UIViewController {
     @objc private func loadConfig() {
         let url = urlField.text ?? ""
         guard !url.isEmpty else { return }
+        urlField.resignFirstResponder()
         UserDefaults.standard.set(url, forKey: "configURL")
-        if let data = fetchConfig(url: url) {
-            do {
-                let parsed = try SiteConfig.parse(data: data)
-                apply(parsed)
-                ConfigStore.upsert(StoredConfig(type: 0, url: url, name: parsed.first?.name ?? "config", logo: ""))
-            } catch {
-                presentAlert(error.localizedDescription)
+        loadConfig(url: url)
+    }
+
+    /// Loads the config (and depot hops) off the main thread: `ConfigFetcher` is synchronous and
+    /// would otherwise block the UI up to the network timeout.
+    private func loadConfig(url: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            guard let result = self.fetchConfig(url: url) else {
+                DispatchQueue.main.async { self.presentAlert("配置加载失败") }
+                return
             }
-        } else {
-            presentAlert("配置加载失败")
+            do {
+                let parsed = try SiteConfig.parse(data: result.data)
+                let home = SiteConfig.homeKey(data: result.data)
+                DispatchQueue.main.async {
+                    self.apply(parsed, url: result.url)
+                    ConfigStore.upsert(StoredConfig(type: 0, url: url, name: parsed.first?.name ?? "config", logo: ""))
+                    self.openHome(sites: parsed, home: home)
+                }
+            } catch {
+                DispatchQueue.main.async { self.presentAlert(error.localizedDescription) }
+            }
         }
     }
 
     private func restoreLastConfig() {
-        if let last = UserDefaults.standard.string(forKey: "configURL"), !last.isEmpty {
-            urlField.text = last
-            if let data = fetchConfig(url: last) {
-                if let parsed = try? SiteConfig.parse(data: data) {
-                    apply(parsed)
-                }
-            }
-        }
+        guard let last = UserDefaults.standard.string(forKey: "configURL"), !last.isEmpty else { return }
+        urlField.text = last
+        loadConfig(url: last)
     }
 
-    private func fetchConfig(url: String) -> Data? {
-        urlField.resignFirstResponder()
-        var data = ConfigFetcher.load(url: url)
+    /// Returns the config body plus the URL it was really loaded from (depots hop to `urls[0]`).
+    private func fetchConfig(url: String) -> (data: Data, url: String)? {
+        guard var data = ConfigFetcher.load(url: url) else { return nil }
+        var resolved = url
         // depot (`urls` array): descend into first reachable config.
-        if let obj = data.flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }),
-           obj["sites"] == nil, let urls = obj["urls"] as? [String], let first = urls.first {
-            data = ConfigFetcher.load(url: first)
+        if let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           obj["sites"] == nil, let urls = obj["urls"] as? [String], let first = urls.first,
+           let next = ConfigFetcher.load(url: first) {
+            data = next
+            resolved = first
         }
-        return data
+        return (data, resolved)
     }
 
-    private func apply(_ parsed: [Site]) {
+    private func apply(_ parsed: [Site], url: String) {
+        // Relative `homePage` values resolve against the config URL (Android `VodConfig.getUrl()`).
+        SiteStore.currentURL = url
         sites = parsed.sorted { $0.name < $1.name }
         savedConfigs = ConfigStore.load()
         tableView.reloadData()
+    }
+
+    /// Mirrors Android `VodConfig`: open the `home` site (or the first WebHome site) on launch.
+    private func openHome(sites: [Site], home: String) {
+        var target = sites.first { $0.isHome }
+        if !home.isEmpty, let preferred = sites.first(where: { $0.key == home && $0.isHome }) { target = preferred }
+        guard let target else { return }
+        SiteStore.current = target
+        navigationController?.popToRootViewController(animated: false)
+        navigationController?.pushViewController(WebHomeViewController(site: target), animated: true)
     }
 
     private func presentAlert(_ message: String) {

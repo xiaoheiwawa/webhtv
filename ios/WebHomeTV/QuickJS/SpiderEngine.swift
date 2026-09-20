@@ -16,7 +16,7 @@ final class SpiderEngine {
     private let executionQueue = DispatchQueue(label: "webhometv.spider")
 
     init() {
-        self.context = JSContext()
+        self.context = JSContext()!
         self.loader = ScriptLoader(context: context, assetProvider: { name in
             Self.loadAsset(name: name)
         })

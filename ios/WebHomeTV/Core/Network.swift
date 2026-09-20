@@ -15,10 +15,10 @@ struct HTTPResponse {
 enum Network {
     static let defaultTimeout: TimeInterval = 20
 
-    private static func session() -> URLSession {
+    private static func session(timeout: TimeInterval = defaultTimeout) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = defaultTimeout
-        config.timeoutIntervalForResource = defaultTimeout
+        config.timeoutIntervalForRequest = timeout
+        config.timeoutIntervalForResource = timeout
         return URLSession(configuration: config)
     }
 
@@ -45,13 +45,14 @@ enum Network {
     }
 
     /// Synchronous request (used by the synchronous JS bridge path).
-    static func sync(url: String, method: String = "GET", headers: [String: String] = [:], body: Data? = nil) -> HTTPResponse {
+    static func sync(url: String, method: String = "GET", headers: [String: String] = [:], body: Data? = nil,
+                     timeout: TimeInterval = defaultTimeout) -> HTTPResponse {
         guard let request = buildRequest(url: url, method: method, headers: headers, body: body) else {
             return HTTPResponse(code: 0, status: 0, content: "", headers: [:])
         }
         let semaphore = DispatchSemaphore(value: 0)
         var result = HTTPResponse(code: 0, status: 0, content: "", headers: [:])
-        let task = session().dataTask(with: request) { data, response, error in
+        let task = session(timeout: timeout).dataTask(with: request) { data, response, error in
             defer { semaphore.signal() }
             var headers: [String: String] = [:]
             if let http = response as? HTTPURLResponse {

@@ -60,8 +60,25 @@ enum SiteStore {
     static var currentURL: String?
 }
 
+/// Resolves a site `homePage` into a loadable URL, mirroring Android `HomeWebController.getHomePage`.
+/// Absolute URLs pass through; scheme-less ones are resolved against the config URL.
+enum HomePageResolver {
+    static func url(for page: String, configURL: String?) -> URL? {
+        guard !page.isEmpty else { return nil }
+        if let url = URL(string: page), let scheme = url.scheme, !scheme.isEmpty { return url }
+        guard let configURL, !configURL.isEmpty, let base = URL(string: configURL) else { return nil }
+        return URL(string: page, relativeTo: base)?.absoluteURL
+    }
+}
+
 /// Parses a TVBox-style config JSON into a site list.
 enum SiteConfig {
+    /// Config-level default site key (`home`), mirroring Android `Config.getHome()`.
+    static func homeKey(data: Data) -> String {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return "" }
+        return object["home"] as? String ?? ""
+    }
+
     static func parse(data: Data) throws -> [Site] {
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let object else {

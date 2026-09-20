@@ -16,8 +16,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         VideoPresenter.install()
 
         let window = UIWindow(frame: UIScreen.main.bounds)
-        let root = UINavigationController(rootViewController: HomeViewController())
-        window.rootViewController = root
+        // Native phone-style UI: bottom tab bar (点播 / 直播 / 设置), mirroring Android mobile.
+        window.rootViewController = MainTabController()
         window.makeKeyAndVisible()
         self.window = window
         return true

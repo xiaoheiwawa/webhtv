@@ -1,15 +1,18 @@
 ﻿import Foundation
+import UIKit
 import WebKit
 
 /// Errors surfaced to the JS bridge.
 enum BridgeError: LocalizedError {
     case unknownMethod(String)
     case emptyURL
+    case notSupported(String)
     case network(String)
     var errorDescription: String? {
         switch self {
         case .unknownMethod(let m): return "Unknown method: \(m)"
         case .emptyURL: return "url cannot be empty"
+        case .notSupported(let m): return "iOS 端暂未实现: \(m)"
         case .network(let msg): return msg
         }
     }
@@ -18,9 +21,20 @@ enum BridgeError: LocalizedError {
 typealias BridgePayload = [String: Any]
 
 /// WebHome native bridge over `WKScriptMessageHandler`.
+///
+/// Mirrors Android `HomeWebBridge`: JS posts `{type,id,method,payload}` (see `FongmiSDK`), the reply
+/// is delivered through `window.fongmiNative.resolve/reject`. Results larger than `inlineLimit` go
+/// through the `window.fongmiBridge` result store, the same 12 000 char / 60 000 char chunk contract
+/// the Android bridge uses.
 final class FongmiBridge: NSObject, WKScriptMessageHandler {
 
+    /// Android `HomeWebBridge.INLINE_LIMIT`.
+    static let inlineLimit = 12000
+
     private weak var webView: WKWebView?
+
+    /// `ui.setToolbar` hook, wired by `WebHomeViewController`.
+    var onToolbarVisible: ((Bool) -> Void)?
 
     init(webView: WKWebView) {
         self.webView = webView
@@ -31,48 +45,7 @@ final class FongmiBridge: NSObject, WKScriptMessageHandler {
     // MARK: - Injection
 
     private func injectScript() {
-        let source = """
-        (function(){
-          if (window.__fongmiInjected) return; window.__fongmiInjected = true;
-          var pending = {};
-          function invoke(method, payload) {
-            return new Promise((resolve, reject) => {
-              var id = 'r' + (Date.now()) + '_' + Math.floor(Math.random()*1e6);
-              pending[id] = { resolve, reject };
-              window.webkit.messageHandlers.fongmi.postMessage({ type: 'invoke', id: id, method: method, payload: payload || {} });
-            });
-          }
-          window.fongmi = {
-            invoke: invoke,
-            request: function(url, opts) { return invoke('net.request', Object.assign({ url: url }, opts||{})); },
-            resourceUrl: function(url, opts) { return invoke('net.resourceUrl', Object.assign({ url: url }, opts||{})); },
-            site: function() { return invoke('site.info'); },
-            config: function() { return invoke('config.info'); },
-            play: function(url, title) { return invoke('player.playUrl', { url: url, title: title||'' }); },
-            playerControl: function(action) { return invoke('player.control', { action: action }); },
-            playerStatus: function() { return invoke('player.status', {}); },
-            speed: function() { return invoke('player.speed', {}); },
-            audioTrack: function() { return invoke('player.track', { type: 'audio' }); },
-            subtitleTrack: function() { return invoke('player.track', { type: 'subtitle' }); },
-            pictureInPicture: function() { return invoke('player.pip', {}); },
-            screenshot: function() { return invoke('player.screenshot', {}); },
-            flip: function() { return invoke('airplay.toggle', {}); },
-            back: function() { return invoke('navigation.back', {}); },
-            reload: function() { return invoke('navigation.reload', {}); },
-            panCheck: function(items) { return invoke('pan.check', { items: items || [] }); },
-            cacheGet: function(rule, key) { return invoke('cache.get', { rule: rule, key: key }); },
-            cacheSet: function(rule, key, value) { return invoke('cache.set', { rule: rule, key: key, value: value }); },
-            cacheDel: function(rule, key) { return invoke('cache.del', { rule: rule, key: key }); }
-          };
-          window.fm = window.fongmi;
-          window.fongmi._resolve = function(id, value) {
-            var p = pending[id]; if (!p) return; delete pending[id]; p.resolve(JSON.parse(value || 'null'));
-          };
-          window.fongmi._reject = function(id, error) {
-            var p = pending[id]; if (!p) return; delete pending[id]; p.reject(new Error(error || 'error'));
-          };
-        })();
-        """
+        let source = FongmiSDK.source(base: LocalHTTPProxy.shared.address)
         let script = WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         webView?.configuration.userContentController.addUserScript(script)
     }
@@ -98,17 +71,20 @@ final class FongmiBridge: NSObject, WKScriptMessageHandler {
         }
     }
 
+    /// Method table, kept in sync with Android `HomeWebBridge.handle`.
     private func route(_ method: String, _ payload: BridgePayload) throws -> Any {
         switch method {
         case "net.request": return try NetRequest.handle(payload)
-        case "net.resourceUrl": return resourceUrl(payload)
+        case "net.resourceUrl": return JSONLiteral.quote(resourceUrl(payload))
         case "sys.info": return systemInfo()
+        case "device.info": return DeviceInfo.current()
         case "site.info": return SiteInfoProvider.site()
         case "config.info": return SiteInfoProvider.config()
-        case "cache.get": return cacheGet(payload)
+        case "cache.get": return JSONLiteral.quote(cacheGet(payload))
         case "cache.set": cacheSet(payload); return "{}"
         case "cache.del": cacheDelete(payload); return "{}"
         case "player.playUrl": return playerPlayUrl(payload)
+        case "player.playVod": return try playerPlayVod(payload)
         case "player.control": return playerControl(payload)
         case "player.status": return PlayerManager.shared.status.dict
         case "player.speed": return playerSpeed()
@@ -117,7 +93,13 @@ final class FongmiBridge: NSObject, WKScriptMessageHandler {
         case "player.screenshot": return playerScreenshot()
         case "airplay.toggle": return toggleAirplay()
         case "pan.check": return PanCheck.handle(payload)
-        case "navigation.back": AppRouter.pop(); return "{}"
+        case "pan.play": return try panPlay(payload)
+        case "app.search": return unsupported("搜索（app.search）")
+        case "app.openLive": return unsupported("电视直播（app.openLive）")
+        case "app.openKeep": return unsupported("收藏（app.openKeep）")
+        case "app.history": return history()
+        case "ui.setToolbar": return setToolbar(payload)
+        case "navigation.back": return navigateBack()
         case "navigation.reload": AppRouter.reload(webView: webView); return "{}"
         default: throw BridgeError.unknownMethod(method)
         }
@@ -125,10 +107,23 @@ final class FongmiBridge: NSObject, WKScriptMessageHandler {
 
     // MARK: - net
 
+    /// Mirrors Android `HomeWebBridge.resourceUrl`: `<proxy>/webResource?url=…[&headers=…][&credentials=include]`.
     private func resourceUrl(_ payload: BridgePayload) -> String {
         guard let url = payload["url"] as? String, !url.isEmpty else { return "" }
-        let base = LocalHTTPProxy.shared.address
-        return "\(base)/webResource?url=\(url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        var out = "\(LocalHTTPProxy.shared.address)/webResource?url=\(Self.encodeURIComponent(url))"
+        if let headers = payload["headers"] {
+            let text = (headers as? String) ?? JSONLiteral.encode(headers)
+            if !text.isEmpty { out += "&headers=\(Self.encodeURIComponent(text))" }
+        }
+        if (payload["credentials"] as? String) == "include" { out += "&credentials=include" }
+        return out
+    }
+
+    /// Percent-encodes exactly like JS `encodeURIComponent` so both SDK paths agree.
+    static let uriComponentAllowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
+
+    static func encodeURIComponent(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: uriComponentAllowed) ?? ""
     }
 
     private func systemInfo() -> String { "{}" }
@@ -136,10 +131,19 @@ final class FongmiBridge: NSObject, WKScriptMessageHandler {
     // MARK: - player
 
     private func playerPlayUrl(_ payload: BridgePayload) -> String {
-        guard let url = payload["url"] as? String, !url.isEmpty else { return "{}" }
+        guard let raw = payload["url"] as? String, !raw.isEmpty else { return "{}" }
+        // Android routes through the local proxy when headers/cookies are requested.
+        let includeCookies = (payload["credentials"] as? String) == "include"
+        let url = (payload["headers"] != nil || includeCookies) ? resourceUrl(payload) : raw
         let title = (payload["title"] as? String) ?? ""
-        DispatchQueue.main.async { PlayerManager.shared.play(url: url, title: title) }
+        DispatchQueue.main.async { PlayerManager.shared.play(url: url, title: title.isEmpty ? url : title) }
         return "{}"
+    }
+
+    private func playerPlayVod(_ payload: BridgePayload) throws -> String {
+        // The Spider engine is not wired to a site detail/playback screen on iOS yet.
+        NotImplementedFeature.notify("播放站点视频（player.playVod）")
+        throw BridgeError.notSupported("player.playVod")
     }
 
     private func playerControl(_ payload: BridgePayload) -> String {
@@ -194,6 +198,42 @@ final class FongmiBridge: NSObject, WKScriptMessageHandler {
         return "{\"airplay\":true}"
     }
 
+    // MARK: - pan / app / ui
+
+    /// Android `HomeWebBridge.playPan`: `push://` is stripped and the link plays directly.
+    private func panPlay(_ payload: BridgePayload) throws -> String {
+        guard let raw = payload["url"] as? String, !raw.isEmpty else { throw BridgeError.emptyURL }
+        let url = raw.lowercased().hasPrefix("push://") ? String(raw.dropFirst("push://".count)) : raw
+        let title = (payload["title"] as? String) ?? ""
+        DispatchQueue.main.async { PlayerManager.shared.play(url: url, title: title.isEmpty ? url : title) }
+        return "{}"
+    }
+
+    private func history() -> String {
+        // No local watch-history store on iOS yet; an empty list keeps page rendering intact.
+        return "[]"
+    }
+
+    /// Android-only UI entry points: answer with a shape pages can inspect and tell the user once.
+    private func unsupported(_ feature: String) -> String {
+        NotImplementedFeature.notify(feature)
+        return #"{"unsupported":true}"#
+    }
+
+    private func setToolbar(_ payload: BridgePayload) -> String {
+        let visible = (payload["visible"] as? Bool) ?? true
+        DispatchQueue.main.async { [weak self] in self?.onToolbarVisible?(visible) }
+        return "{}"
+    }
+
+    private func navigateBack() -> String {
+        DispatchQueue.main.async { [weak self] in
+            guard let webView = self?.webView else { AppRouter.pop(); return }
+            if webView.canGoBack { webView.goBack() } else { AppRouter.pop() }
+        }
+        return "{}"
+    }
+
     // MARK: - cache
 
     private func cacheGet(_ payload: BridgePayload) -> String {
@@ -216,28 +256,34 @@ final class FongmiBridge: NSObject, WKScriptMessageHandler {
     // MARK: - Reply
 
     private func resolve(id: String, value: Any) {
-        let json: String
-        if let str = value as? String { json = str }
-        else if let data = try? JSONSerialization.data(withJSONObject: value), let str = String(data: data, encoding: .utf8) { json = str }
-        else { json = "{}" }
-        webView?.evaluateJavaScript("window.fongmi._resolve('\(id)', \(jsStringLiteral(json)))") { _, _ in }
+        let json = JSONLiteral.encode(value)
+        guard let webView = webView else { return }
+        guard json.count > Self.inlineLimit else {
+            webView.evaluateJavaScript("window.fongmiNative&&window.fongmiNative.resolve(\(JSONLiteral.quote(id)), \(json))") { _, _ in }
+            return
+        }
+        // Large payload: park it in the JS result store first, then hand back the handle.
+        let resultId = "\(id)_\(Int(Date().timeIntervalSince1970 * 1000))"
+        let script = "window.fongmiBridge&&window.fongmiBridge.pushResult(\(JSONLiteral.quote(resultId)), \(JSONLiteral.quote(json)), false);"
+            + "window.fongmiNative&&window.fongmiNative.resolve(\(JSONLiteral.quote(id)), {\"__fmResultId\":\(JSONLiteral.quote(resultId))});"
+        webView.evaluateJavaScript(script) { _, _ in }
     }
+
     private func reject(id: String, error: String) {
-        webView?.evaluateJavaScript("window.fongmi._reject('\(id)', \(jsStringLiteral(error)))") { _, _ in }
-    }
-    private func jsStringLiteral(_ s: String) -> String {
-        "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        webView?.evaluateJavaScript("window.fongmiNative&&window.fongmiNative.reject(\(JSONLiteral.quote(id)), \(JSONLiteral.quote(error)))") { _, _ in }
     }
 }
 
-/// `net.request` handler.
+/// `net.request` handler. Mirrors Android `WebCall.request` payload keys.
 private enum NetRequest {
     static func handle(_ payload: BridgePayload) throws -> Any {
         guard let url = payload["url"] as? String, !url.isEmpty else { throw BridgeError.emptyURL }
-        let method = (payload["method"] as? String) ?? "GET"
+        let method = (payload["method"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "GET"
         let headers = (payload["headers"] as? [String: String]) ?? [:]
+        let body = (payload["body"] as? String)?.data(using: .utf8)
+        let timeout = (payload["timeout"] as? NSNumber)?.doubleValue
         let responseType = (payload["responseType"] as? String) ?? "text"
-        let res = Network.sync(url: url, method: method, headers: headers)
+        let res = Network.sync(url: url, method: method, headers: headers, body: body, timeout: timeout ?? Network.defaultTimeout)
         if responseType == "json",
            let data = res.content.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) {
@@ -258,6 +304,60 @@ enum PanCheck {
             }
         }
         return out
+    }
+}
+
+/// Device info for `device.info` (Android serves the same keys from `/device`).
+enum DeviceInfo {
+    private static var cached: [String: Any]?
+
+    static func current() -> [String: Any] {
+        if let cached = cached { return cached }
+        let info: [String: Any]
+        if Thread.isMainThread {
+            info = build()
+        } else {
+            var boxed: [String: Any] = [:]
+            DispatchQueue.main.sync { boxed = build() }
+            info = boxed
+        }
+        cached = info
+        return info
+    }
+
+    private static func build() -> [String: Any] {
+        let device = UIDevice.current
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return [
+            "uuid": device.identifierForVendor?.uuidString ?? "",
+            "name": device.name,
+            "type": 1,
+            "serial": "",
+            "ip": "",
+            "eth": "",
+            "wlan": "",
+            "model": device.model,
+            "system": "\(device.systemName) \(device.systemVersion)",
+            "app": "WebHomeTV \(version)",
+            "time": Int(Date().timeIntervalSince1970),
+        ]
+    }
+}
+
+/// Android-only features: tell the user once instead of failing silently.
+enum NotImplementedFeature {
+    private static var shown: Set<String> = []
+
+    static func notify(_ feature: String) {
+        DispatchQueue.main.async {
+            guard !shown.contains(feature) else { return }
+            shown.insert(feature)
+            NSLog("[FongmiBridge] not implemented on iOS: %@", feature)
+            guard let top = VideoPresenter.topViewController() else { return }
+            let alert = UIAlertController(title: "iOS 端暂未实现", message: feature, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "好", style: .default))
+            top.present(alert, animated: true)
+        }
     }
 }
 
@@ -289,5 +389,3 @@ enum SiteInfoProvider {
         return ["url": SiteStore.currentURL ?? "", "driveCheck": false]
     }
 }
-
-

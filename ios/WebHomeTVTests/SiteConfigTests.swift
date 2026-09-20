@@ -39,6 +39,25 @@ final class SiteConfigTests: XCTestCase {
         XCTAssertTrue(sites.isEmpty)
     }
 
+    func testHomeKeyAndHomePageResolution() throws {
+        let json = #"{"home":"web","sites":[{"key":"web","name":"WebHome","type":3,"homePage":"./nostr.html"}]}"#
+        let data = Data(json.utf8)
+        XCTAssertEqual(SiteConfig.homeKey(data: data), "web")
+        XCTAssertEqual(try SiteConfig.parse(data: data).first?.homePage, "./nostr.html")
+
+        // Absolute pages pass through, scheme-less ones resolve against the config URL.
+        XCTAssertEqual(HomePageResolver.url(for: "./nostr.html", configURL: "https://example.com/tv/config.json")?.absoluteString,
+                       "https://example.com/tv/nostr.html")
+        XCTAssertEqual(HomePageResolver.url(for: "https://cdn.example.com/a.html", configURL: nil)?.absoluteString,
+                       "https://cdn.example.com/a.html")
+        XCTAssertNil(HomePageResolver.url(for: "./x.html", configURL: nil))
+        XCTAssertNil(HomePageResolver.url(for: "", configURL: "https://example.com/c.json"))
+    }
+
+    func testHomeKeyMissing() throws {
+        XCTAssertEqual(SiteConfig.homeKey(data: Data(#"{"sites":[]}"#.utf8)), "")
+    }
+
     func testBridgeInjectionScript() throws {
         // Ensure building the injected source does not throw and contains key bindings.
         let source = """

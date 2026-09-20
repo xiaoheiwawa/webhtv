@@ -146,11 +146,23 @@ enum VideoPresenter {
     }
 
     static func topViewController() -> UIViewController? {
-        guard let root = UIApplication.shared.connectedScenes
-                .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
-                .first?.rootViewController else { return nil }
+        guard let root = rootViewController() else { return nil }
         var top = root
         while let presented = top.presentedViewController { top = presented }
         return top
+    }
+
+    /// The key window's root controller.
+    ///
+    /// The app does not adopt `UIScene` (no `UIApplicationSceneManifest`), so `connectedScenes` may be
+    /// empty; the app delegate window is then the reliable source. Without this fallback the player
+    /// (and the WebHome bridge's `player.*` / notice alerts) would never get a controller to present on.
+    static func rootViewController() -> UIViewController? {
+        if let root = UIApplication.shared.connectedScenes
+            .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+            .first?.rootViewController {
+            return root
+        }
+        return (UIApplication.shared.delegate as? AppDelegate)?.window?.rootViewController
     }
 }

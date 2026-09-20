@@ -5,7 +5,7 @@ import JavaScriptCore
 final class LoaderTests: XCTestCase {
 
     func testSyncModuleExecution() throws {
-        let context = JSContext()
+        let context = JSContext()!
         let loader = ScriptLoader(context: context, assetProvider: { _ in nil })
         let exports = try loader.loadModule(
             source: "var out = { value: 6 * 7 }; module.exports = out;",
@@ -16,14 +16,14 @@ final class LoaderTests: XCTestCase {
     }
 
     func testModuleCache() throws {
-        let context = JSContext()
+        let context = JSContext()!
         let loader = ScriptLoader(context: context, assetProvider: { _ in nil })
         XCTAssertNoThrow(try loader.loadModule(source: "module.exports={a:1}", moduleID: "cache-test"))
         XCTAssertNoThrow(try loader.loadModule(source: "module.exports={a:2}", moduleID: "cache-test"))
     }
 
     func testDefaultExportResolves() throws {
-        let context = JSContext()
+        let context = JSContext()!
         let loader = ScriptLoader(context: context, assetProvider: { _ in nil })
         let exports = try loader.loadModule(
             source: "exports.default = function(){ return 'spider-ok' };",

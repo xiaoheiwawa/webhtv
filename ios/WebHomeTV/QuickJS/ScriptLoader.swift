@@ -52,7 +52,7 @@ final class ScriptLoader {
 
     private func installRequire() {
         let requireBlock: @convention(block) (String) -> JSValue = { [weak self] name in
-            guard let self else { return JSValue(undefinedIn: JSContext()) }
+            guard let self else { return JSValue(undefinedIn: JSContext()!) }
             do {
                 return try self.load(name)
             } catch {

@@ -121,7 +121,7 @@ final class LocalHTTPProxy {
                 return
             }
             let range = headers["range"]
-            let result = HTTPForward.getData(url: target, headers: [:], range: range)
+            let result = HTTPForward.getData(url: target, headers: Self.parseHeaders(params["headers"]), range: range)
             if let data = result.data {
                 var respHeaders = result.headers
                 if respHeaders["content-type"] == nil { respHeaders["content-type"] = "application/octet-stream" }
@@ -142,6 +142,16 @@ final class LocalHTTPProxy {
             return
         }
         respond(connection, status: 404, contentType: "text/plain", body: Data("not found".utf8), headOnly: method == "HEAD")
+    }
+
+    /// `headers` is the JSON object a page passes to `net.resourceUrl(url, { headers })`.
+    /// `credentials=include` (cookie forwarding) is not implemented yet.
+    private static func parseHeaders(_ raw: String?) -> [String: String] {
+        guard let raw, !raw.isEmpty, let data = raw.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [:] }
+        var out: [String: String] = [:]
+        for (key, value) in object { out[key] = "\(value)" }
+        return out
     }
 
     // MARK: - Reply helpers
