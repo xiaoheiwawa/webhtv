@@ -1,0 +1,52 @@
+﻿# WebHomeTV iOS native port.
+# XcodeGen project manifest. Generate the Xcode project with:
+#   brew install xcodegen
+#   cd ios && xcodegen generate
+
+name: WebHomeTV
+options:
+  bundleIdPrefix: com.webhometv
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+targets:
+  WebHomeTV:
+    type: application
+    platform: iOS
+    sources:
+      - path: WebHomeTV
+        excludes:
+          - "Resources/JS/**"
+      - path: WebHomeTV/Resources/JS
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.webhometv.app
+        PRODUCT_NAME: WebHomeTV
+        INFOPLIST_FILE: WebHomeTV/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        ENABLE_BITCODE: NO
+        IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+
+schemes:
+  WebHomeTV:
+    build:
+      targets:
+        WebHomeTV: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+    test:
+      config: Debug

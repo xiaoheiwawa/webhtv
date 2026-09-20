@@ -198,8 +198,7 @@ public class SiteApi {
         } else {
             ArrayMap<String, String> params = new ArrayMap<>();
             params.put("wd", keyword);
-            params.put("quick", String.valueOf(quick));
-            params.put("extend", "");
+            if (quick) params.put("quick", "1");
             if (hasPage) params.put("pg", page);
             String searchContent = call(site, params);
             SpiderDebug.log("search", searchContent);

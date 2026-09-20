@@ -1,0 +1,80 @@
+﻿name: 构建 iOS 未签名 IPA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: WebHomeTV
+  BUNDLE_ID: com.webhometv.app
+  DERIVED_DATA: ios/build
+
+jobs:
+  ios:
+    name: iOS arm64 未签名 IPA
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 检测 Xcode 版本
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: 安装 XcodeGen
+        run: |
+          brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        working-directory: ios
+        shell: bash
+        run: |
+          xcodegen generate --spec project.yml
+          test -f WebHomeTV.xcodeproj/project.pbxproj
+
+      - name: 构建 Release（不签名）
+        working-directory: ios
+        shell: bash
+        run: |
+          xcodebuild \
+            -project WebHomeTV.xcodeproj \
+            -scheme WebHomeTV \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: 打包未签名 IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ env.DERIVED_DATA }}/Build/Products/Release-iphoneos/WebHomeTV.app"
+          test -d "$APP_PATH"
+          mkdir -p dist/Payload
+          cp -R "$APP_PATH" dist/Payload/
+          (cd dist && zip -qry "${APP_NAME}-ios-arm64-unsigned.ipa" Payload)
+          rm -rf dist/Payload
+          ls -lh "dist/${APP_NAME}-ios-arm64-unsigned.ipa"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-unsigned
+          path: dist/${{ env.APP_NAME }}-ios-arm64-unsigned.ipa
+          if-no-files-found: error

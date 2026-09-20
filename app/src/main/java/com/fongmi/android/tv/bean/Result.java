@@ -54,7 +54,7 @@ public class Result implements Parcelable {
     @JsonAdapter(UrlAdapter.class)
     private Url url;
 
-    @SerializedName("header")
+    @SerializedName(value = "header", alternate = {"headers"})
     @JsonAdapter(HeaderAdapter.class)
     private Map<String, String> header;
 

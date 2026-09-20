@@ -21,3 +21,11 @@ nostr_副本*.html
 *.tmp
 *.log
 third_party/sources/
+
+# iOS
+ios/WebHomeTV.xcodeproj/
+ios/build/
+ios/*.xcworkspace/
+ios/DerivedData/
+*.ipa
+!ios/**/*.md
