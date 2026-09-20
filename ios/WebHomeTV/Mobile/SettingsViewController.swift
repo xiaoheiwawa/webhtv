@@ -3,7 +3,9 @@
 /// Android-mobile-style 设置 tab. Grouped table with config / play / about sections.
 final class SettingsViewController: UITableViewController {
 
-    private let sections: [(String, [(String, UIAction)])] = [
+    private enum SettingAction { case loadConfig, savedConfigs, rate, about }
+
+    private let sections: [(String, [(String, SettingAction)])] = [
         ("配置", [
             ("加载/切换配置", .loadConfig),
             ("已存配置", .savedConfigs),
@@ -15,15 +17,6 @@ final class SettingsViewController: UITableViewController {
             ("版本", .about),
         ]),
     ]
-
-    private enum Action {
-        case loadConfig
-        case savedConfigs
-        case rate
-        case about
-    }
-
-    private enum Key { static let rate = "playback.rate" }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -38,13 +31,11 @@ final class SettingsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { sections[section].1.count }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
-        cell.textLabel?.text = sections[indexPath.section].1[indexPath.row].0
-        let action = sections[indexPath.section].1[indexPath.row].1
+        let (title, action) = sections[indexPath.section].1[indexPath.row]
+        cell.textLabel?.text = title
+        cell.accessoryType = action == .rate ? .detailButton : .disclosureIndicator
         if action == .rate {
             cell.detailTextLabel?.text = "\(PlayerManager.shared.status.rate)x"
-            cell.accessoryType = .detailButton
-        } else {
-            cell.accessoryType = .disclosureIndicator
         }
         return cell
     }
