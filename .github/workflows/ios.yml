@@ -73,6 +73,33 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
+      - name: 检查打包内容
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ env.DERIVED_DATA }}/Build/Products/Release-iphoneos/WebHomeTV.app"
+          echo "===== .app 总大小 ====="
+          du -sh "$APP_PATH"
+          echo ""
+          echo "===== 顶层结构 ====="
+          ls -la "$APP_PATH"
+          echo ""
+          echo "===== 二进制可执行文件 ====="
+          find "$APP_PATH" -maxdepth 1 -type f -perm +111 2>/dev/null | xargs -r ls -lh
+          BIN="$APP_PATH/WebHomeTV"
+          if [ -f "$BIN" ]; then echo "二进制大小:"; ls -lh "$BIN"; fi
+          echo ""
+          echo "===== JS 资源清单 ====="
+          if [ -d "$APP_PATH/JS" ]; then
+            find "$APP_PATH/JS" -type f | sort
+            echo "JS 资源合计:"
+            du -ch "$APP_PATH"/JS/lib/*.js 2>/dev/null | tail -1
+          else
+            echo "未找到 JS 目录！"
+          fi
+          echo ""
+          echo "===== 各类型体积构成 ====="
+          du -ah "$APP_PATH" | sort -rh | head -20
       - name: 打包未签名 IPA
         shell: bash
         run: |
