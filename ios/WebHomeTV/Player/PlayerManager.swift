@@ -153,7 +153,7 @@ final class PlayerManager: NSObject {
 
     /// Load audio / subtitle media selection groups asynchronously.
     func loadTracks() {
-        guard let item = player?.currentItem, let asset = item.asset as? AVURLAsset else { return }
+        guard let item = player?.currentItem else { return }
         Task {
             if let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
                 self.audioTracks = group.options
@@ -255,6 +255,7 @@ final class PlayerManager: NSObject {
         tracksObserver = nil
     }
 }
+
 
 
 
