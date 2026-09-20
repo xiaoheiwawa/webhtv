@@ -9,8 +9,8 @@ enum ModuleID {
         guard let base, !base.isEmpty else { return spec }
         var result = spec
         if spec.hasPrefix("./") || spec.hasPrefix("../") {
-            if let url = URL(string: spec, relativeTo: URL(string: base)), let abs = url.absoluteString {
-                result = abs
+            if let url = URL(string: spec, relativeTo: URL(string: base)) {
+                result = url.absoluteString
             }
         } else if !spec.hasPrefix("/") {
             let baseDir = (base as NSString).deletingLastPathComponent

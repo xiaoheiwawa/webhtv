@@ -100,7 +100,7 @@ final class FongmiBridge: NSObject, WKScriptMessageHandler {
 
     private func route(_ method: String, _ payload: BridgePayload) throws -> Any {
         switch method {
-        case "net.request": return NetRequest.handle(payload)
+        case "net.request": return try NetRequest.handle(payload)
         case "net.resourceUrl": return resourceUrl(payload)
         case "sys.info": return systemInfo()
         case "site.info": return SiteInfoProvider.site()
@@ -289,4 +289,5 @@ enum SiteInfoProvider {
         return ["url": SiteStore.currentURL ?? "", "driveCheck": false]
     }
 }
+
 

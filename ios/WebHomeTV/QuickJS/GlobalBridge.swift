@@ -78,14 +78,12 @@ final class GlobalBridge: NSObject {
 
     private func installGlobals() {
         let ctx = context
-        // global `req(url, options)` -> synchronous response (used by http.js `async:false`)
         let req: @convention(block) (String, JSValue) -> JSValue = { url, options in
             Self.dispatch(http: url, options: options, context: ctx)
         }
         ctx.globalObject.setObject(req, forKeyedSubscript: "req" as NSString)
         ctx.globalObject.setObject(req, forKeyedSubscript: "http" as NSString)
 
-        // setTimeout
         let timeout: @convention(block) (JSValue, Double) -> Void = { fn, delay in
             let timer = Timer(timeInterval: max(delay, 0) / 1000.0, repeats: false) { _ in
                 fn.call(withArguments: [])
@@ -97,19 +95,17 @@ final class GlobalBridge: NSObject {
 
     // MARK: - HTTP dispatch
 
-    /// Route a JS http call. If `options.complete` is set, call it asynchronously with the response;
-    /// otherwise return the response JS object synchronously.
     static func dispatch(http url: String, options: JSValue, context ctx: JSContext) -> JSValue {
-        let optionsDict = options.toDictionary()
+        let optionsDict = options.toBridgeDictionary()
         let method = (optionsDict["method"] as? String) ?? "GET"
         let headers = (optionsDict["headers"] as? [String: String]) ?? [:]
         let body = (optionsDict["body"] as? String)?.data(using: .utf8)
-        let timeout = (optionsDict["time"] as? Double) ?? 0
+        _ = (optionsDict["time"] as? Double) ?? 0
 
         let complete = options.objectForKeyedSubscript("complete")
-        let isAsync = complete != nil && !complete.isUndefined
+        let isAsync = complete.map { !$0.isUndefined } ?? false
 
-        if isAsync {
+        if isAsync, let complete {
             Network.async(url: url, method: method, headers: headers, body: body) { res in
                 DispatchQueue.main.async {
                     complete.call(withArguments: [Self.buildResponse(res, context: ctx)])

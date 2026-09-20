@@ -25,9 +25,10 @@ final class SpiderEngine {
         preloadLibs()
     }
 
+    private var jsNull: JSValue { JSValue(object: NSNull(), in: context) }
+
     // MARK: - Spider bootstrap
 
-    /// Evaluate and prepare the spider for the given api + extend string.
     func initSpider(api: String, extend: String?) throws {
         spiderAPI = api
         let resolver = SpiderAPI(api)
@@ -36,12 +37,8 @@ final class SpiderEngine {
         }
 
         isCat = source.contains("__jsEvalReturn")
-        let exports: JSValue
-        do {
-            exports = try loader.loadModule(source: source, moduleID: api)
-        } catch { throw error }
+        let exports = try loader.loadModule(source: source, moduleID: api)
 
-        // Resolve the spider object.
         if let evalReturn = exports.objectForKeyedSubscript("__jsEvalReturn"), !evalReturn.isUndefined {
             isCat = true
             spider = evalReturn.call(withArguments: [])
@@ -62,24 +59,30 @@ final class SpiderEngine {
     }
 
     private func buildExt(extend: String?) -> JSValue {
+        let obj = context.evaluateScript("({})") ?? jsNull
         if isCat {
-            let obj = context.evaluateScript("({})") ?? context.null
             obj.setObject(3, forKeyedSubscript: "stype" as NSString)
             obj.setObject(spiderAPI, forKeyedSubscript: "skey" as NSString)
             if let extend, !extend.isEmpty {
-                if extend.hasPrefix("{"), let parsed = context.evaluateScript("JSON.parse(arguments[0])", withArguments: [extend]) {
-                    obj.setObject(parsed, forKeyedSubscript: "ext" as NSString)
-                } else {
-                    obj.setObject(extend, forKeyedSubscript: "ext" as NSString)
-                }
+                obj.setObject(parseJSONOrString(extend), forKeyedSubscript: "ext" as NSString)
             }
             return obj
         } else {
             if let extend, !extend.isEmpty, extend.hasPrefix("{") {
-                return context.evaluateScript("JSON.parse(arguments[0])", withArguments: [extend]) ?? context.null
+                return parseJSONOrString(extend)
             }
-            return context.evaluateScript(jsStringLiteral(extend ?? ""))
+            return context.evaluateScript(jsStringLiteral(extend ?? "")) ?? jsNull
         }
+    }
+
+    /// Parse `extend` as JSON object when possible, otherwise as a plain string value.
+    private func parseJSONOrString(_ text: String) -> JSValue {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let literal = jsStringLiteral(text)
+        if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
+            return context.evaluateScript("JSON.parse(" + literal + ")") ?? jsNull
+        }
+        return context.evaluateScript(literal) ?? jsNull
     }
 
     // MARK: - Spider methods
@@ -106,7 +109,7 @@ final class SpiderEngine {
         return call("proxy", with: [obj])?.toString()
     }
 
-    func destroy() { _ = call("destroy") }
+    func destroy() { _ = call("destroy", with: []) }
 
     // MARK: - Internals
 
@@ -134,21 +137,23 @@ final class SpiderEngine {
     }
 
     private func toJS(_ value: Any) -> JSValue {
+        let jsValue: JSValue?
         switch value {
-        case let s as String: return JSValue(object: s, in: context) ?? context.null
-        case let b as Bool: return JSValue(bool: b, in: context) ?? context.null
-        case let i as Int: return JSValue(int32: Int32(i), in: context) ?? context.null
-        default: return JSValue(object: value, in: context) ?? context.null
+        case let s as String: jsValue = JSValue(object: s, in: context)
+        case let b as Bool: jsValue = JSValue(bool: b, in: context)
+        case let i as Int: jsValue = JSValue(int32: Int32(i), in: context)
+        default: jsValue = JSValue(object: value, in: context)
         }
+        return jsValue ?? jsNull
     }
 
     private func jsuObject(_ map: [String: String]) -> JSValue? {
-        let obj = context.evaluateScript("({})")
-        for (k, v) in map { obj?.setObject(v, forKeyedSubscript: k as NSString) }
+        guard let obj = context.evaluateScript("({})") else { return nil }
+        for (k, v) in map { obj.setObject(v, forKeyedSubscript: k as NSString) }
         return obj
     }
     private func jsuArray(_ items: [String]) -> JSValue {
-        let arr = context.evaluateScript("([])") ?? context.null
+        let arr = context.evaluateScript("([])") ?? jsNull
         for (i, item) in items.enumerated() { arr.setObject(item, forKeyedSubscript: NSNumber(value: i)) }
         return arr
     }
@@ -167,7 +172,6 @@ final class SpiderEngine {
                let src = try? String(contentsOfFile: resolved, encoding: .utf8) {
                 return src
             }
-            // direct relative path fallback
             if let full = Bundle.main.resourceURL?.appendingPathComponent(path),
                let src = try? String(contentsOfFile: full.path, encoding: .utf8) {
                 return src
@@ -179,12 +183,14 @@ final class SpiderEngine {
     private func jsStringLiteral(_ s: String) -> String {
         "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
-}
 
     /// Mirrors Android `typeof spider.default === 'function' ? spider.default() : spider.default`.
-    /// NSObject/JSCore does not expose `isCallable`, so detect via Object.prototype.toString.
+    private lazy var isFunctionChecker: JSValue? = {
+        context.evaluateScript("(function(){ return function(v){ return typeof v === 'function'; }; })()")
+    }()
+
     private func isFunction(_ value: JSValue) -> Bool {
         if value.isUndefined || value.isNull { return false }
-        let tag = context.evaluateScript("Object.prototype.toString.call(arguments[0]).slice(8, -1)", withArguments: [value])?.toString()
-        return tag == "Function" || tag == "AsyncFunction"
+        return isFunctionChecker?.call(withArguments: [value])?.toBool() ?? false
     }
+}

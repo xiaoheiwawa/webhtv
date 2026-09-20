@@ -100,10 +100,13 @@ final class VideoViewController: AVPlayerViewController, AVPictureInPictureContr
         flash("已截图 \(size/1024) KB")
     }
     @objc private func airplayTapped() {
-        let vc = AVRoutePickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-        view.addSubview(vc)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { vc.showRoutePicker() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { vc.removeFromSuperview() }
+        // AVRoutePickerView shows the picker when the user taps it; place a tappable instance
+        // over the panel button so the system picker can be invoked.
+        let picker = AVRoutePickerView(frame: CGRect(x: 0, y: 0, width: 80, height: 32))
+        picker.tintColor = .white
+        picker.center = view.center
+        view.addSubview(picker)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { picker.removeFromSuperview() }
     }
     @objc private func backTapped() { PlayerManager.shared.stop(); dismiss(animated: true) }
 
@@ -126,4 +129,28 @@ final class VideoViewController: AVPlayerViewController, AVPictureInPictureContr
 
     func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) {}
     func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {}
+}
+
+
+/// Configures playback presentation: presenting an AVPlayerViewController from the top controller.
+enum VideoPresenter {
+    static func install() {
+        PlayerManager.shared.presenter = { manager in
+            DispatchQueue.main.async {
+                guard let top = Self.topViewController() else { return }
+                let vc = VideoViewController()
+                vc.player = manager.player
+                top.present(vc, animated: true)
+            }
+        }
+    }
+
+    static func topViewController() -> UIViewController? {
+        guard let root = UIApplication.shared.connectedScenes
+                .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+                .first?.rootViewController else { return nil }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        return top
+    }
 }
