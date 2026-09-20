@@ -1,34 +1,34 @@
 ﻿import UIKit
 
-/// Launcher: enter a TVBox config URL (or raw JSON), load sites, then open a site's WebHome.
+/// Launcher: enter a TVBox config URL (or raw JSON), load sites, open a site's WebHome.
+/// Also persists the config list and restores the last-used config on launch.
 final class HomeViewController: UIViewController {
 
     private let urlField = UITextField()
     private let loadButton = UIButton(type: .system)
     private let tableView = UITableView()
     private var sites: [Site] = []
+    private var savedConfigs: [StoredConfig] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        title = "WebHomeTV"
         view.backgroundColor = .black
         configureLayout()
         loadButton.addTarget(self, action: #selector(loadConfig), for: .touchUpInside)
+        savedConfigs = ConfigStore.load()
+        restoreLastConfig()
     }
 
     private func configureLayout() {
-        urlField.placeholder = "输入 TVBox 配置地址 (http://... 或直接 JSON)"
+        urlField.placeholder = "输入 TVBox 配置地址或直接 JSON"
         urlField.textColor = .lightText
         urlField.autocapitalizationType = .none
         urlField.autocorrectionType = .no
         urlField.keyboardType = .URL
         urlField.clearButtonMode = .whileEditing
         urlField.font = .systemFont(ofSize: 15)
-        if let cfg = UserDefaults.standard.string(forKey: "configURL") {
-            urlField.text = cfg
-        }
-        urlField.translatesAutoresizingMaskIntoConstraints = false
         urlField.layer.cornerRadius = 6
-        urlField.setLeftPaddingPoints(10)
 
         loadButton.setTitle("加载配置", for: .normal)
         loadButton.setTitleColor(.systemBlue, for: .normal)
@@ -42,6 +42,7 @@ final class HomeViewController: UIViewController {
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
+        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cfg")
         tableView.backgroundColor = .black
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
@@ -50,7 +51,6 @@ final class HomeViewController: UIViewController {
             inputLine.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
             inputLine.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             inputLine.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-
             tableView.topAnchor.constraint(equalTo: inputLine.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -59,30 +59,48 @@ final class HomeViewController: UIViewController {
     }
 
     @objc private func loadConfig() {
-        guard let url = urlField.text, !url.isEmpty else { return }
+        let url = urlField.text ?? ""
+        guard !url.isEmpty else { return }
         UserDefaults.standard.set(url, forKey: "configURL")
-        urlField.resignFirstResponder()
-        loadButton.isEnabled = false
-        loadButton.setTitle("加载中…", for: .normal)
-
-        let fetched = ConfigFetcher.load(url: url)
-        loadButton.isEnabled = true
-        loadButton.setTitle("加载配置", for: .normal)
-        guard let data = fetched else {
-            presentAlert("配置加载失败")
-            return
-        }
-        do {
-            var parsed = try SiteConfig.parse(data: data)
-            if parsed.isEmpty, let urls = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let arr = urls["urls"] as? [String], let first = arr.first, let d = ConfigFetcher.load(url: first) {
-                parsed = (try? SiteConfig.parse(data: d)) ?? []
+        if let data = fetchConfig(url: url) {
+            do {
+                let parsed = try SiteConfig.parse(data: data)
+                apply(parsed)
+                ConfigStore.upsert(StoredConfig(type: 0, url: url, name: parsed.first?.name ?? "config", logo: ""))
+            } catch {
+                presentAlert(error.localizedDescription)
             }
-            sites = parsed.filter { !$0.isSpider || $0.isHome || true }.sorted { $0.name < $1.name }
-            SiteStore.currentURL = url
-            tableView.reloadData()
-        } catch {
-            presentAlert("\(error.localizedDescription)")
+        } else {
+            presentAlert("配置加载失败")
         }
+    }
+
+    private func restoreLastConfig() {
+        if let last = UserDefaults.standard.string(forKey: "configURL"), !last.isEmpty {
+            urlField.text = last
+            if let data = fetchConfig(url: last) {
+                if let parsed = try? SiteConfig.parse(data: data) {
+                    apply(parsed)
+                }
+            }
+        }
+    }
+
+    private func fetchConfig(url: String) -> Data? {
+        urlField.resignFirstResponder()
+        var data = ConfigFetcher.load(url: url)
+        // depot (`urls` array): descend into first reachable config.
+        if let obj = data.flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }),
+           obj["sites"] == nil, let urls = obj["urls"] as? [String], let first = urls.first {
+            data = ConfigFetcher.load(url: first)
+        }
+        return data
+    }
+
+    private func apply(_ parsed: [Site]) {
+        sites = parsed.sorted { $0.name < $1.name }
+        savedConfigs = ConfigStore.load()
+        tableView.reloadData()
     }
 
     private func presentAlert(_ message: String) {
@@ -93,10 +111,23 @@ final class HomeViewController: UIViewController {
 }
 
 extension HomeViewController: UITableViewDataSource, UITableViewDelegate {
+    func numberOfSections(in tableView: UITableView) -> Int { 2 }
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        section == 0 ? "已存配置" : "站点"
+    }
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        sites.count
+        section == 0 ? savedConfigs.count : sites.count
     }
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if indexPath.section == 0 {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "cfg", for: indexPath)
+            let cfg = savedConfigs[indexPath.row]
+            cell.backgroundColor = .black
+            cell.textLabel?.textColor = .systemBlue
+            cell.textLabel?.font = .systemFont(ofSize: 14)
+            cell.textLabel?.text = cfg.name.isEmpty ? cfg.url : "\(cfg.name)"
+            return cell
+        }
         let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
         let site = sites[indexPath.row]
         cell.backgroundColor = .black
@@ -108,6 +139,11 @@ extension HomeViewController: UITableViewDataSource, UITableViewDelegate {
     }
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+        if indexPath.section == 0 {
+            urlField.text = savedConfigs[indexPath.row].url
+            loadConfig()
+            return
+        }
         let site = sites[indexPath.row]
         SiteStore.current = site
         if site.isHome {
@@ -116,13 +152,5 @@ extension HomeViewController: UITableViewDataSource, UITableViewDelegate {
         } else {
             presentAlert("该站点没有 WebHome 首页")
         }
-    }
-}
-
-private extension UITextField {
-    func setLeftPaddingPoints(_ amount: CGFloat) {
-        let v = UIView(frame: CGRect(x: 0, y: 0, width: amount, height: 1))
-        leftView = v
-        leftViewMode = .always
     }
 }

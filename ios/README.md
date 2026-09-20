@@ -12,61 +12,62 @@
 ## 当前状态
 
 - [x] iOS 工程骨架（`project.yml` + XcodeGen 生成）
-- [x] 入口 `AppDelegate.swift` + `UINavigationController` 根导航
-- [x] JS Spider 引擎（`SpiderEngine.swift` + `ScriptLoader.swift` + `ESModuleTransformer.swift`）
-- [x] ESM→CommonJS 转换（`cat.js`/`gbk.js`/csp 的 `export default`/`export {}` 均可跑）
-- [x] 原生桥 `GlobalBridge.swift`（`native.s2t/getPort/req/joinUrl/md5/aes/rsa/localGet` 等）
-- [x] 单元测试（`WebHomeTVTests`，transformer/loader/site 解析）
-- [x] 配置模型 `SiteConfig.swift`（解析 TVBox `sites`、`homePage` 备用键、header、站点分类）
-- [x] WebHome 桥 `FongmiBridge.swift`（`WKScriptMessageHandler`，`window.fongmi.invoke/resourceUrl` + `net/site/config/cache` 方法）
-- [x] 首页 `HomeViewController.swift`（输入配置 URL → 加载站点列表 → 打开有 `homePage` 的 WebHome）
-- [x] `WebHomeViewController.swift`（`WKWebView` 渲染 WebHome 页）
-- [x] `.github/workflows/ios.yml` 产出未签名 IPA（含模拟器测试步骤）
-- [ ] 本地 HTTP 代理 / Proxy server
-- [ ] 站点配置持久化（多配置管理、depot `urls` 递归）
-- [ ] Spider 站点真正跑通 homepage/search/detail/play 并接 UI
-- [ ] 播放器（AVPlayer）、遥控器按键、投屏（AirPlay）
-- [ ] 网盘检测 / Nostr / TMDB 等增强能力
+- [x] JS Spider 引擎（`SpiderEngine` + `ScriptLoader` + `ESModuleTransformer`）
+- [x] 原生桥 `GlobalBridge.swift`（`native.*` + `req/http/console/setTimeout`）
+- [x] 配置模型 `SiteConfig.swift` + 持久化 `ConfigStore.swift`（多配置、depot `urls` 递归、重启恢复）
+- [x] WebHome 桥 `FongmiBridge.swift`（`window.fongmi`：`net.*/site.*/config.*/cache.*/player.*/pan.check/navigation.*`）
+- [x] 首页/站点列表 + WKWebView WebHome 渲染
+- [x] 本地 HTTP 代理 `LocalHTTPProxy.swift`（`/webResource?url=` 转发 + CORS + Range）
+- [x] 播放器 `PlayerManager.swift` + `VideoViewController.swift`（AVPlayer）
+- [x] 播放控制：play/pause/seek/±15s/prev/next/replay/loop
+- [x] 播放细节：倍速循环(Rate)、音轨/字幕切换、画中画(PiP)、截图、AirPlay、屏幕遥控面板
+- [x] 单元测试（transformer/loader/site/playback/config/proxy 地址）
+- [x] `.github/workflows/ios.yml` 产出未签名 IPA（含模拟器测试）
+- [ ] 本地 proxy `/proxy` 接入 Spider 流（阶段二引擎，尚未接到代理路由）
+- [ ] 遥控器实体键映射（iOS 无 D-pad，用屏幕面板替代，已做）
+- [ ] 网盘驱动检测（`pan.check` 目前为骨架，未接真实检测服务）
+- [ ] 字幕外挂、倍速持久记忆、重复列表播放
 
 ## 移植对照（Android → iOS）
 
 | Android | iOS |
 | --- | --- |
-| `quickjs/.../QuickJSContext` | `JavaScriptCore.JSContext`（原生） |
-| `quickjs/.../Global.java` / `Local.java` | `GlobalBridge.swift` |
+| `quickjs/.../QuickJSContext` | `JavaScriptCore.JSContext` |
+| `quickjs/.../Global.java`/`Local.java` | `GlobalBridge.swift` |
 | `okhttp3` | `URLSession`（`Network.swift`） |
-| `SharedPreferences` (local 缓存) | `UserDefaults`/本地存储 |
-| `app/.../bean/Config + VodConfig` | `SiteConfig.swift` + `Site.Store` |
+| `SharedPreferences` (local 缓存) | `UserDefaults`/`ConfigStore` |
+| `bean/Config + VodConfig` | `SiteConfig.swift` + `StoredConfig` |
 | `HomeWebBridge` + `window.fongmi` | `FongmiBridge.swift` + `WKWebView` |
-| 本地 HTTP Server (Proxy/Server) | 待移植（嵌入 HTTP / TCPServer） |
-| WebView + `window.fongmi` | `WKWebView` + `WKScriptMessageHandler` |
-| ExoPlayer | `AVPlayer` / `AVPlayerViewController` |
+| 本地 HTTP Server (`/webResource`) | `LocalHTTPProxy.swift`（`NWListener`） |
+| `PlayerManager` + ExoPlayer | `PlayerManager.swift` + `AVPlayer`/`AVPlayerViewController` |
+| 倍速/音轨/字幕/投屏 | `Rate`/media selection/PiP/AirPlay `AVRoutePicker` |
 | DLNA | AirPlay（系统级） |
 
-## 里程碑（后续迭代依次推进）
+## 里程碑
 
-1. **CI 出包闭环**（已完成工程 + 工作流；push 后即产 IPA）
-2. **JS Spider 引擎完整加载**（已完成基础；`csp_*` 源 homepage/search/detail/play 可跑）
-3. **配置导入 + 站点列表 + WebHome 首页接管**（本阶段已落地：SiteConfig 解析 + FongmiBridge + WKWebView 首页；代理/持久化待下阶段）
-4. 点播/直播播放器 + 遥控器按键 + 本地代理
-5. 网盘检测 / Nostr / TMDB / 投屏增强
-6. 真机/侧载安装验证（未签名需 AltStore 等）
+1. CI 出包闭环（push → 未签名 IPA）✔
+2. JS Spider 引擎加载（transformer/loader/native 桥）✔
+3. 配置导入 + 站点列表 + WebHome 首页 ✔
+4. 本地代理 + AVPlayer 播放 + 控制 ✔
+5. 播放细节：倍速/音轨/字幕/PiP/截图/AirPlay/屏幕遥控 ✔
+6. Windows 增强：持久化 + `/webResource` stream + `pan.check`/`navigation` 骨架 ✔（网盘真实检测、`/proxy` 流接入待办）
+7. 真机/侧载安装验证（未签名需 AltStore 等）——待你推 CI
 
 ## 使用方法（GitHub 自动出包）
 
-1. 把分支推送到你的 GitHub 仓库。
-2. 仓库 `Actions` 页选择 **构建 iOS 未签名 IPA**，可 `Run workflow` 手动触发；push 到 `ios/**` 或 `.github/workflows/ios.yml` 也会自动触发。
-3. 构建完成后在该次运行的 `ios-ipa-unsigned` Artifact 下载 `WebHomeTV-ios-arm64-unsigned.ipa`。
+1. 推分支到你的 GitHub 仓库。
+2. `Actions` 选 **构建 iOS 未签名 IPA**，手动或 push 到 `ios/**` 触发。
+3. 在运行页 `ios-ipa-unsigned` Artifact 下载 `WebHomeTV-ios-arm64-unsigned.ipa`。
 
-### 本地生成工程（需要 macOS + Xcode）
+### 本地生成工程（需 macOS + Xcode）
 ```bash
 brew install xcodegen
 cd ios
 xcodegen generate
 open WebHomeTV.xcodeproj
 ```
-> 工程由 `project.yml` 生成，`WebHomeTV.xcodeproj` 不入库（已在 `.gitignore`）。
+> 工程由 `project.yml` 生成，`WebHomeTV.xcodeproj` 不入库（见 `.gitignore`）。
 
 ### 关于未签名 IPA
-- 未签名 IPA 无法从 App Store 直接安装，需要侧载工具（如 AltStore / Sideloadly / TrollStore），或用免费 Apple ID 签名后真机安装。
-- 如需正式分发，再接入付费 Developer 证书与 GitHub Secrets。
+- 未签名 IPA 无法从 App Store 直接安装，需侧载（AltStore / Sideloadly / TrollStore）或免费 Apple ID 签名真机安装。
+- 正式分发再接入付费 Developer 证书与 GitHub Secrets。
