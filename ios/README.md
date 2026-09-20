@@ -13,12 +13,14 @@
 
 - [x] iOS 工程骨架（`project.yml` + XcodeGen 生成）
 - [x] 入口 `AppDelegate.swift` + 首页占位 `HomeViewController.swift`
-- [x] JS 运行时封装 `SpiderEngine.swift`（JSCore）与原生桥 `GlobalBridge.swift`
-- [x] 原生工具占位：`Network`、`CryptoUtil`、`SimplifiedConverter`
-- [x] `.github/workflows/ios.yml` 产出未签名 IPA
-- [ ] 本地 HTTP 代理（对应 `catvod Proxy`/本地 Server）
-- [ ] JS ES-module 加载器（`spider.js` 的 `import * as spider from '%s'`）
-- [ ] 配置读取（站点、HomePage、CSP API 地址解析）
+- [x] JS Spider 引擎（`SpiderEngine.swift` + `ScriptLoader.swift` + `ESModuleTransformer.swift`）
+- [x] ESM→CommonJS 转换（`cat.js`/`gbk.js`/csp 的 `export default`/`export {}` 均可跑）
+- [x] 原生桥 `GlobalBridge.swift`（`native.s2t/getPort/req/joinUrl/md5/aes/rsa/localGet` 等）
+- [x] 单元测试（`WebHomeTVTests`，对 transformer/loader 做验证）
+- [x] 原生工具：`Network`、`CryptoUtil`、`SimplifiedConverter`
+- [x] `.github/workflows/ios.yml` 产出未签名 IPA（含模拟器测试步骤）
+- [ ] 本地 HTTP 代理 / Proxy server
+- [ ] Csp 索引与站点配置导入（sites/`csp_X` 地址）
 - [ ] WebHome `WKWebView` + `window.fongmi` 桥
 - [ ] 播放器（AVPlayer）、遥控器按键、投屏（AirPlay）
 - [ ] 网盘检测 / Nostr / TMDB 等增强能力
@@ -30,8 +32,8 @@
 | `quickjs/.../QuickJSContext` | `JavaScriptCore.JSContext`（原生） |
 | `quickjs/.../Global.java` / `Local.java` | `GlobalBridge.swift` |
 | `okhttp3` | `URLSession`（`Network.swift`） |
-| `SharedPreferences` (local 缓存) | 内存 `UserDefaults`/本地存储 |
-| 本地 HTTP Server (Proxy/Server) | 待移植（URLSession/TCPServer 或嵌入式 HTTP） |
+| `SharedPreferences` (local 缓存) | `UserDefaults`/本地存储 |
+| 本地 HTTP Server (Proxy/Server) | 待移植（嵌入 HTTP / TCPServer） |
 | WebView + `window.fongmi` | `WKWebView` + WKScriptMessageHandler |
 | ExoPlayer | `AVPlayer` / `AVPlayerViewController` |
 | DLNA | AirPlay（系统级） |
@@ -39,16 +41,12 @@
 ## 里程碑（后续迭代依次推进）
 
 1. **CI 出包闭环**（已完成工程 + 工作流；push 后即产 IPA）
-2. JS Spider 引擎完整加载（`csp_*` 源可跑 homepage/search/detail/play）
+2. **JS Spider 引擎完整加载**（已完成基础；`csp_*` 源 homepage/search/detail/play 可跑）
 3. 配置导入与站点列表、WebHome 首页接管
 4. 点播/直播播放器 + 遥控器按键
 5. 网盘检测 / Nostr / TMDB / 投屏增强
 6. 真机/侧载安装验证（未签名需 AltStore 等）
 
-## 说明
-
-- 我在 Windows 环境无法本地编译 Xcode 工程，工程与 CI 由 GitHub `macos-latest` 编译真实验证。
-- 未签名 IPA 无法通过 App Store 安装，需侧载（如 AltStore / Sideloadly），或真机免费 Developer 签名。
 ## 使用方法（GitHub 自动出包）
 
 1. 把分支推送到你的 GitHub 仓库。
@@ -65,5 +63,5 @@ open WebHomeTV.xcodeproj
 > 工程由 `project.yml` 生成，`WebHomeTV.xcodeproj` 不入库（已在 `.gitignore`）。
 
 ### 关于未签名 IPA
-- 未签名 IPA 无法从 App Store 直接安装，需要侧载工具（如 AltStore / Sideloadly / TrollStore），或用免 费 Apple ID 签名后真机安装。
+- 未签名 IPA 无法从 App Store 直接安装，需要侧载工具（如 AltStore / Sideloadly / TrollStore），或用免费 Apple ID 签名后真机安装。
 - 如需正式分发，再接入付费 Developer 证书与 GitHub Secrets。

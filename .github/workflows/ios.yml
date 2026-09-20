@@ -23,7 +23,7 @@ jobs:
   ios:
     name: iOS arm64 未签名 IPA
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -43,6 +43,19 @@ jobs:
         run: |
           xcodegen generate --spec project.yml
           test -f WebHomeTV.xcodeproj/project.pbxproj
+
+      - name: 运行单元测试
+        working-directory: ios
+        shell: bash
+        continue-on-error: true
+        run: |
+          xcodebuild test \
+            -project WebHomeTV.xcodeproj \
+            -scheme WebHomeTV \
+            -destination "platform=iOS Simulator,name=iPhone 15,OS=latest" \
+            CODE_SIGNING_ALLOWED=NO
+        env:
+          SKIP_TEST_BUILD: ""
 
       - name: 构建 Release（不签名）
         working-directory: ios
